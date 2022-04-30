@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -297,8 +298,10 @@ int main(void)
   /* Modbus Slave initialization */
   g_modbus_usb.uModbusType = MB_SLAVE;
   //g_modbus_usb.uModbusType = MB_MASTER;
-  g_modbus_usb.xTypeHW = USART_HW_DMA;
-  g_modbus_usb.port =  &huart1; // This is the UART port connected to STLINK
+  //g_modbus_usb.xTypeHW = USART_HW_DMA;
+  g_modbus_usb.xTypeHW = USB_CDC_HW; // // USB-CDC
+  //g_modbus_usb.port = &huart1; // This is the UART port connected to STLINK
+  g_modbus_usb.port = NULL; // USB-CDC
   g_modbus_usb.u8id = 1; //slave ID, always different than zero
   //g_modbus_usb.u8id = 0; //slave ID for master always 0
   g_modbus_usb.u16timeOut = 1000;
@@ -310,8 +313,8 @@ int main(void)
    //Initialize Modbus library
   ModbusInit((modbusHandler_t *)&g_modbus_usb);
   //Start capturing traffic on serial Port
-  ModbusStart((modbusHandler_t *)&g_modbus_usb);
-
+  //ModbusStart((modbusHandler_t *)&g_modbus_usb);
+  ModbusStartCDC((modbusHandler_t *)&g_modbus_usb);
 
   /* Modbus Slave initialization */
   g_modbus_rs485.uModbusType = MB_SLAVE;
@@ -408,9 +411,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 25;
-  RCC_OscInitStruct.PLL.PLLN = 168;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLN = 336;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -1144,6 +1147,8 @@ static void handle_requests(void)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
   for(;;)
