@@ -261,32 +261,34 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
   */
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
-/* USER CODE BEGIN 6 */
+  /* USER CODE BEGIN 6 */
 #if ENABLE_USB_CDC == 1
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   int i, j;
   for (i = 0; i<numberHandlers; i++ )
   {
 		if (mHandlers[i]->xTypeHW == USB_CDC_HW  )
-	    	{
-	    		for(j=0; j< *Len && j<MAX_BUFFER; j++){
-			    //xQueueSendToBackFromISR( mHandlers[i]->QueueModbusHandle, &Buf[j], pdFALSE);
-	    			mHandlers[i]->u8Buffer[j] = Buf[j];
-	    		}
-	    		if(*Len> MAX_BUFFER)
-	    		{
+		{
+			j = MIN(*Len, MAX_BUFFER);
+			memcpy(mHandlers[i]->u8Buffer, Buf, j);
+//			for(j=0; j< *Len && j<MAX_BUFFER; j++)
+//			{
+//				//xQueueSendToBackFromISR( mHandlers[i]->QueueModbusHandle, &Buf[j], pdFALSE);
+//				mHandlers[i]->u8Buffer[j] = Buf[j];
+//			}
+			if(*Len> MAX_BUFFER)
+			{
+				mHandlers[i]->u8BufferSize = ERR_BUFF_OVERFLOW;
+			}
+			else
+			{
+				mHandlers[i]->u8BufferSize = j;
+			}
 
-	    			mHandlers[i]->u8BufferSize = ERR_BUFF_OVERFLOW;
-	    		}
-	    		else
-	    		{
-	    			mHandlers[i]->u8BufferSize = j;
-	    		}
-
-	    		xTaskNotifyFromISR(mHandlers[i]->myTaskModbusAHandle, 0, eSetValueWithOverwrite, &xHigherPriorityTaskWoken );
-	    		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-	    		break;
-	    	}
+			xTaskNotifyFromISR(mHandlers[i]->myTaskModbusAHandle, 0, eSetValueWithOverwrite, &xHigherPriorityTaskWoken );
+			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+			break;
+		}
 
   }
 #endif

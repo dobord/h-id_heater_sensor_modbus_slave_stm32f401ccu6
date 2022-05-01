@@ -290,8 +290,8 @@ void OTG_FS_IRQHandler(void)
   /* USER CODE END OTG_FS_IRQn 0 */
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
   /* USER CODE BEGIN OTG_FS_IRQn 1 */
-  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+//  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+//  portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
   /* USER CODE END OTG_FS_IRQn 1 */
 }
 

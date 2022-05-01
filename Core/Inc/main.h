@@ -36,7 +36,7 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-extern volatile modbusHandler_t g_modbus_usb;
+extern volatile modbusHandler_t g_modbus_usb_serial;
 extern volatile modbusHandler_t g_modbus_rs485;
 /* USER CODE END ET */
 

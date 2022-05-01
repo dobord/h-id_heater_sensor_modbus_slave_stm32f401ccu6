@@ -200,7 +200,8 @@ const osThreadAttr_t myTaskRS485_attributes = {
   .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
-volatile modbusHandler_t g_modbus_usb;
+volatile modbusHandler_t g_modbus_usb_cdc;
+volatile modbusHandler_t g_modbus_usb_serial;
 volatile modbusHandler_t g_modbus_rs485;
 volatile DeviceMemoryModbus g_modbus_mem = { 0 };
 
@@ -296,31 +297,51 @@ int main(void)
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)g_adc_dma_buffer, adc_num_channels);
 
   /* Modbus Slave initialization */
-  g_modbus_usb.uModbusType = MB_SLAVE;
-  //g_modbus_usb.uModbusType = MB_MASTER;
-  //g_modbus_usb.xTypeHW = USART_HW_DMA;
-  g_modbus_usb.xTypeHW = USB_CDC_HW; // // USB-CDC
-  //g_modbus_usb.port = &huart1; // This is the UART port connected to STLINK
-  g_modbus_usb.port = NULL; // USB-CDC
-  g_modbus_usb.u8id = 1; //slave ID, always different than zero
-  //g_modbus_usb.u8id = 0; //slave ID for master always 0
-  g_modbus_usb.u16timeOut = 1000;
-  g_modbus_usb.EN_Port = NULL; // No RS485
-   //g_modbus_usb.EN_Port = LD2_GPIO_Port; // RS485 Enable
-   //g_modbus_usb.EN_Pin = LD2_Pin; // RS485 Enable
-  g_modbus_usb.u16regs = (uint16_t*) &g_modbus_mem;
-  g_modbus_usb.u16regsize= sizeof(g_modbus_mem)/sizeof(uint16_t);
+  g_modbus_usb_cdc.uModbusType = MB_SLAVE;
+  //g_modbus_usb_cdc.uModbusType = MB_MASTER;
+  //g_modbus_usb_cdc.xTypeHW = USART_HW_DMA;
+  g_modbus_usb_cdc.xTypeHW = USB_CDC_HW; // // USB-CDC
+  //g_modbus_usb_cdc.port = &huart1; // This is the UART port connected to STLINK
+  g_modbus_usb_cdc.port = NULL; // USB-CDC
+  g_modbus_usb_cdc.u8id = 1; //slave ID, always different than zero
+  //g_modbus_usb_cdc.u8id = 0; //slave ID for master always 0
+  g_modbus_usb_cdc.u16timeOut = 1000;
+  g_modbus_usb_cdc.EN_Port = NULL; // No RS485
+  //g_modbus_usb_cdc.EN_Port = LD2_GPIO_Port; // RS485 Enable
+  //g_modbus_usb_cdc.EN_Pin = LD2_Pin; // RS485 Enable
+  g_modbus_usb_cdc.u16regs = (uint16_t*) &g_modbus_mem;
+  g_modbus_usb_cdc.u16regsize= sizeof(g_modbus_mem)/sizeof(uint16_t);
    //Initialize Modbus library
-  ModbusInit((modbusHandler_t *)&g_modbus_usb);
+  ModbusInit((modbusHandler_t *)&g_modbus_usb_cdc);
   //Start capturing traffic on serial Port
-  //ModbusStart((modbusHandler_t *)&g_modbus_usb);
-  ModbusStartCDC((modbusHandler_t *)&g_modbus_usb);
+  //ModbusStart((modbusHandler_t *)&g_modbus_usb_cdc);
+  ModbusStartCDC((modbusHandler_t *)&g_modbus_usb_cdc);
+
+  /* Modbus Slave initialization */
+  g_modbus_usb_serial.uModbusType = MB_SLAVE;
+  //g_modbus_usb_serial.uModbusType = MB_MASTER;
+  g_modbus_usb_serial.xTypeHW = USART_HW_DMA;
+  //g_modbus_usb_serial.xTypeHW = USB_CDC_HW; // // USB-CDC
+  g_modbus_usb_serial.port = &huart1; // This is the UART port connected to STLINK
+  //g_modbus_usb_serial.port = NULL; // USB-CDC
+  g_modbus_usb_serial.u8id = 1; //slave ID, always different than zero
+  //g_modbus_usb_serial.u8id = 0; //slave ID for master always 0
+  g_modbus_usb_serial.u16timeOut = 1000;
+  g_modbus_usb_serial.EN_Port = NULL; // No RS485
+  //g_modbus_usb_serial.EN_Port = LD2_GPIO_Port; // RS485 Enable
+  //g_modbus_usb_serial.EN_Pin = LD2_Pin; // RS485 Enable
+  g_modbus_usb_serial.u16regs = (uint16_t*) &g_modbus_mem;
+  g_modbus_usb_serial.u16regsize= sizeof(g_modbus_mem)/sizeof(uint16_t);
+   //Initialize Modbus library
+  ModbusInit((modbusHandler_t *)&g_modbus_usb_serial);
+  //Start capturing traffic on serial Port
+  ModbusStart((modbusHandler_t *)&g_modbus_usb_serial);
 
   /* Modbus Slave initialization */
   g_modbus_rs485.uModbusType = MB_SLAVE;
   //g_modbus_rs485.uModbusType = MB_MASTER;
   g_modbus_rs485.xTypeHW = USART_HW_DMA;
-  g_modbus_rs485.port =  &huart2; // This is the UART port connected to RS485
+  g_modbus_rs485.port = &huart2; // This is the UART port connected to RS485
   g_modbus_rs485.u8id = 1; //slave ID, always different than zero
   //g_modbus_rs485.u8id = 0; //slave ID for master always 0
   g_modbus_rs485.u16timeOut = 1000;
@@ -1255,10 +1276,7 @@ void StartTaskUSB(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	xSemaphoreTake(g_modbus_usb.ModBusSphrHandle , portMAX_DELAY);
-	xSemaphoreGive(g_modbus_usb.ModBusSphrHandle);
-	handle_requests();
-	osDelay(10);
+	osDelay(1000000);
   }
   /* USER CODE END StartTaskUSB */
 }
@@ -1276,10 +1294,10 @@ void StartTaskRS485(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	xSemaphoreTake(g_modbus_rs485.ModBusSphrHandle , portMAX_DELAY);
-	xSemaphoreGive(g_modbus_rs485.ModBusSphrHandle);
+//	xSemaphoreTake(g_modbus_rs485.ModBusSphrHandle , portMAX_DELAY);
+//	xSemaphoreGive(g_modbus_rs485.ModBusSphrHandle);
 	handle_requests();
-    osDelay(10);
+	osDelay(10);
   }
   /* USER CODE END StartTaskRS485 */
 }
