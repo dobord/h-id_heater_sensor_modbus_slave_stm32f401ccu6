@@ -10,10 +10,18 @@
 
 #include <stdint.h>
 
+#ifdef QT_CORE_LIB
+#include <QtGlobal>
+#else // QT_CORE_LIB
+#ifndef Q_PACKED
+#define Q_PACKED __attribute__ ((__packed__))
+#endif
+#endif // QT_CORE_LIB
+
 // °C
 
 #define HID_HEATER_SENSOR_TYPE_TBL(R,X)\
-	R(X,    , u 	, undefined         , ""      			, ""    )\
+    R(X,    , u 	, undefined         , ""      			, ""    )\
     R(X,    , b   	, bit               , "Бит"             , ""    )\
     R(X,    , a   	, adc_value         , "Значение АЦП"    , ""    )\
     R(X,    , U     , voltage           , "Напряжение"      , "V"  	)\
@@ -28,13 +36,27 @@
     PREFIX##NAME INIT,
 
 
-enum SensorType
+#define HID_HEATER_LOG_MESSAGE_TYPE_TBL(R,X)\
+    R(X, none               ,       , "" )\
+    R(X, power_on           ,       , "Питание появилось (включение)" )\
+    R(X, power_off          ,       , "Питание пропало (выключение)" )\
+    R(X, firmware_updated   ,       , "Обновление прошивки" )\
+    R(X, critical           ,       , "Критический сбой" )\
+    R(X, error              ,       , "Ошибка" )\
+    R(X, warning            ,       , "Предупреждение" )\
+    R(X, info               ,       , "Информация для справки" )\
+
+#define HID_HEATER_LOG_MESSAGE_TYPE_ENUM(PREFIX, NAME, INIT, TITLE)\
+    PREFIX##NAME INIT,
+
+
+typedef enum SensorType
 {
     HID_HEATER_SENSOR_TYPE_TBL(HID_HEATER_DECL_SENSOR_TYPE_ENUM,sensor_type_)
-    sensor_type__num
-};
+    sensor_type_num_of_types
+} SensorType;
 
-enum HeaterSystemSoftwareType
+typedef enum HeaterSystemSoftwareType
 {
 	hsst_unknow,
 
@@ -43,10 +65,11 @@ enum HeaterSystemSoftwareType
 
 	/// Устройство с датчиками температуры
 	hsst_sensor_temperature,
-};
+
+} HeaterSystemSoftwareType;
 
 
-enum SystemShortRequestID
+typedef enum SystemShortRequestID
 {
 	ssr_none,
 	ssr_get_short_io_version,
@@ -61,6 +84,10 @@ enum SystemShortRequestID
 	ssr_get_devid,
 	ssr_get_revid,
 	ssr_get_uid,
+
+	ssr_eeprom_factory_defaults = 90,
+	ssr_eeprom_load_config,
+	ssr_eeprom_save_config,
 
 	ssr_get_addr_long_io = 100,
 	ssr_get_addr_dev_ctl,
@@ -104,13 +131,13 @@ enum SystemShortRequestID
 	ssr_rtc1_write_calibr,
 	ssr_rtc1_read_regs,
 	ssr_rtc1_write_regs,
-	ssr_rtc1_copy_to_rtc0,
+    ssr_rtc1_copy_to_rtc0,
 
-	/// обновить изображение экрана с очисткой
-	ssr_tft_fullscreen_repaint = 500
-};
+    /// обновить изображение экрана с очисткой
+    ssr_tft_fullscreen_repaint = 500,
+} SystemShortRequestID;
 
-enum SystemLongRequestID
+typedef enum SystemLongRequestID
 {
 	slr_none,
 	slr_get_long_io_version,
@@ -119,11 +146,13 @@ enum SystemLongRequestID
 	slr_call_short_request_list_args_1u16_ret_1u16,
 	slr_rs485_request,
 	slr_get_int_sens_desc,
-	slr_replace_masked_bits
-};
+    slr_replace_masked_bits,
+    slr_log_flash_status,
+    slr_log_flash_read
+} SystemLongRequestID;
 
 
-enum HeaterConstants
+typedef enum HeaterConstants
 {
     hc_addr_internal_relay = 0,
 
@@ -131,21 +160,41 @@ enum HeaterConstants
     hc_addr_short_io_response = hc_addr_short_io,
     hc_addr_short_io_request,
     hc_addr_short_io_data,
-};
+} HeaterConstants;
 
-enum HeaterVariableContainer
+typedef enum HeaterVariableContainer
 {
 	hvc_none,
 	hvc_heater_counter_q,
 	hvc_relay_pin,
 	hvc_sens_value
-};
+} HeaterVariableContainer;
+
+typedef enum LogMessageType
+{
+    HID_HEATER_LOG_MESSAGE_TYPE_TBL(HID_HEATER_LOG_MESSAGE_TYPE_ENUM,lmt_)
+    lmt_num_of_types
+} LogMessageType;
+
+typedef enum LogStorageType
+{
+    /// Внутренняя ОЗУ
+    lst_internal_ram,
+
+    /// Внешняя EEPROM
+    /// (AT24C32)
+    lst_external_eeprom,
+
+    /// Внешняя Flash
+    /// (W25Q32A)
+    lst_external_flash
+} LogStorageType;
 
 typedef union UnionRegister {
-	uint8_t  u8[8];
-	uint16_t u16[4];
-	uint32_t u32[2];
-	uint64_t u64[1];
+	uint8_t  ur8[8];
+	uint16_t ur16[4];
+	uint32_t ur32[2];
+	uint64_t ur64[1];
 } UnionRegister;
 
 
@@ -170,47 +219,47 @@ typedef struct SensorTypeDesc
 
 typedef struct RemoteRegisterAddress
 {
-	/// Адрес регистра в памяти устроства
-	uint8_t reg_addr;
+    /// Адрес регистра в памяти устроства
+    uint8_t reg_addr;
 
-	/// Адрес устройства в modbus на шине rs485
-	uint8_t rs485_addr;
+    /// Адрес устройства в modbus на шине rs485
+    uint8_t rs485_addr;
 } RemoteRegisterAddress;
 
 
 typedef struct RemoteRelayControl
 {
-	/// Номер регистра реле в памяти ведущего устройства
-	uint8_t src_relay_reg: 4;
+    /// Номер регистра реле в памяти ведущего устройства
+    uint8_t src_relay_reg: 4;
 
-	/// Номер регистра реле в памяти ведомого устройства
-	uint8_t dest_reg_addr: 4;
+    /// Номер регистра реле в памяти ведомого устройства
+    uint8_t dest_reg_addr: 4;
 
-	/// Адрес ведомого устройства в modbus на шине rs485
-	uint8_t rs485_addr;
+    /// Адрес ведомого устройства в modbus на шине rs485
+    uint8_t rs485_addr;
 
-	/// Битовая маска выбора обновляемых битов в ведомом устройстве
-	/// пустая маска (=0) означает полностью отключенную логику
-	uint16_t dest_mask;
+    /// Битовая маска выбора обновляемых битов в ведомом устройстве
+    /// пустая маска (=0) означает полностью отключенную логику
+    uint16_t dest_mask;
 
-	/// Битовая маска инвертирования выбранных битов
-	uint16_t dest_invert;
+    /// Битовая маска инвертирования выбранных битов
+    uint16_t dest_invert;
 
-	/// Битовая маска выбора битов для установки в 0 (в ведомом устройстве)
-	/// при условии разрешения бита получателя в dest_mask и сброшеном бите в dest_ones
-	uint16_t dest_zeros;
+    /// Битовая маска выбора битов для установки в 0 (в ведомом устройстве)
+    /// при условии разрешения бита получателя в dest_mask и сброшеном бите в dest_ones
+    uint16_t dest_zeros;
 
-	/// Битовая маска выбора битов для установки в 1 (в ведомом устройстве)
-	/// при условии разрешения бита получателя в dest_mask и сброшеном бите в dest_zeros
-	uint16_t dest_ones;
+    /// Битовая маска выбора битов для установки в 1 (в ведомом устройстве)
+    /// при условии разрешения бита получателя в dest_mask и сброшеном бите в dest_zeros
+    uint16_t dest_ones;
 
-	/// Регистр выбора бита источника, для каждого бита получателя
-	/// b3..b0 - номер бита источника для 0-ого бита получателя
-	/// b7..b4 - номер бита источника для 1-ого бита получателя
-	/// и.т.д.
-	/// применяется к битам при условии разрешения бита получателя в dest_mask
-	/// и установленых одновременно битах в dest_zeros и dest_ones
-	uint16_t bit_src_mixer[4];
+    /// Регистр выбора бита источника, для каждого бита получателя
+    /// b3..b0 - номер бита источника для 0-ого бита получателя
+    /// b7..b4 - номер бита источника для 1-ого бита получателя
+    /// и.т.д.
+    /// применяется к битам при условии разрешения бита получателя в dest_mask
+    /// и установленых одновременно битах в dest_zeros и dest_ones
+    uint16_t bit_src_mixer[4];
 } RemoteRelayControl;
 
 
@@ -235,27 +284,27 @@ typedef struct SensorDescription
 /// Параметры управления насосом солнечного нагревателя
 typedef struct SolarHeaterControl
 {
-	/// Разрешение работы
-	uint16_t enable: 1;
-	uint16_t : 7;
+    /// Разрешение работы
+    uint16_t enable: 1;
+    uint16_t : 7;
 
-	/// Номер регистра Т1
-	uint16_t t1: 8;
-
-
-	/// Номер регистра Т2
-	uint16_t t2: 8;
-
-	/// Номер бита вывода реле
-	uint16_t n: 8;
+    /// Номер регистра Т1
+    uint16_t t1: 8;
 
 
-	/// Пороговое значение разницы (Т1 - Т2) для включения
-	int16_t dt_on;
+    /// Номер регистра Т2
+    uint16_t t2: 8;
+
+    /// Номер бита вывода реле
+    uint16_t n: 8;
 
 
-	/// Пороговое значение разницы (Т1 - Т2) для выключения
-	int16_t dt_off;
+    /// Пороговое значение разницы (Т1 - Т2) для включения
+    int16_t dt_on;
+
+
+    /// Пороговое значение разницы (Т1 - Т2) для выключения
+    int16_t dt_off;
 
 } SolarHeaterControl;
 
@@ -283,23 +332,23 @@ typedef struct SolarHeaterParams
 /// Параметры управления обычной нагрузкой по пороговому значению
 typedef struct CommonControl
 {
-	/// Разрешение работы
-	uint16_t enable: 1;
+    /// Разрешение работы
+    uint16_t enable: 1;
 
-	/// Номер регистра Т
-	uint16_t t: 7;
+    /// Номер регистра Т
+    uint16_t t: 7;
 
-	/// Номер бита вывода реле
-	uint16_t n: 8;
-
-
-	/// Пороговое значение для включения
-	int16_t t_on;
+    /// Номер бита вывода реле
+    uint16_t n: 8;
 
 
-	/// Дельта для выключения.
-	/// При значении (t_on - T) > dt_off срабатывает выключение
-	int16_t dt_off;
+    /// Пороговое значение для включения
+    int16_t t_on;
+
+
+    /// Дельта для выключения.
+    /// При значении (t_on - T) > dt_off срабатывает выключение
+    int16_t dt_off;
 
 } CommonControl;
 
@@ -405,5 +454,38 @@ typedef struct SlrRs485RequestHeader
     uint16_t u16CoilsNo;   /*!< Number of coils or registers to access */
 } SlrRs485RequestHeader;
 
+
+#pragma pack(push,1)
+typedef struct Q_PACKED LogHeader
+{
+    /// Размер (в байтах)
+    /// вместе с заголовком
+    uint8_t length;
+
+    /// Тип
+    ///  @sa LogMessageType
+    uint8_t type;
+
+    /// Дата и время в формате Unix timestamp UTC
+    uint32_t timestamp;
+} LogHeader;
+#pragma pack(pop)
+
+
+typedef struct SlrLogReadHeader
+{
+    /// Размер вычитывемых данных
+    uint32_t size: 8;
+
+    /// Начальный адрес лога
+    uint32_t addr: 24;
+} SlrLogReadHeader;
+
+typedef struct SlrLogStatus
+{
+    uint32_t virt_top;
+    uint32_t size;
+    uint32_t capacity;
+} SlrLogStatus;
 
 #endif // HEATER_MODBUS_H

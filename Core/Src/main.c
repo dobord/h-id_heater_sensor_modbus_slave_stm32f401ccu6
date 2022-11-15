@@ -28,7 +28,10 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include "heater_modbus.h"
+#include <AT24Cxx/AT24Cxx_stm32_hal.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -90,8 +93,44 @@ enum HeaterSystemConfigConstatnts
 	hscc_long_io_version = 1,
 	hscc_long_io_length = 2 + MAX_BUFFER/2,
 	hscc_software_type = hsst_sensor_temperature,
+	hscc_config_marker = 0xEBADF00Dul,
+	hscc_config_version = 1ul
 };
 
+
+/// Структура заголовка паняти конфигурации устройства, хранящаяся в EEPROM
+typedef struct ConfigMemoryHeader
+{
+	uint32_t marker;
+	uint16_t version;
+	uint16_t length;
+	uint8_t software_type;
+	uint8_t rs485_id;
+	uint16_t header_crc;
+} ConfigMemory;
+
+
+enum HeaterSystemEepromMemory
+{
+	hsem_reserved_0 = 0,			// u8[32]
+	hsem_config_marker = 32, 		// u32
+	hsem_config_version = 36, 		// u16
+	hsem_config_length = 38, 		// u16
+	hsem_config_software_type = 40, // u8
+	hsem_config_rs485_id = 41,		// u8
+	hsem_config_header_crc = 42,	// u16
+	hsem_device_memory = 44 		// u8[ sizeof(DeviceMemoryModbus) ]
+};
+
+enum HeaterSystemErrorEnum
+{
+	hsee_ok,
+	hsee_eeprom_load_config_error_bad_marker,
+	hsee_eeprom_load_config_error_bad_software_type,
+	hsee_eeprom_load_config_error_bad_version,
+	hsee_eeprom_load_config_error_bad_length,
+	hsee_eeprom_load_config_error_bad_header_crc,
+};
 
 /// Память доступная для внешнего управления устройством
 typedef struct DeviceMemoryModbus
@@ -137,6 +176,7 @@ enum Constants
 #define VSENS_AT_AMBIENT_TEMP  760    /* VSENSE value (mv) at ambient temperature */
 #define AVG_SLOPE               25    /* Avg_Solpe multiply by 10 */
 #define VREF                  3300
+#define JULIAN_DATE_BASE     2440588   // Unix epoch time in Julian calendar (UnixTime = 00:00:00 01.01.1970 => JDN = 2440588)
 
 enum ADC_Constants
 {
@@ -171,10 +211,7 @@ RTC_HandleTypeDef hrtc;
 
 SPI_HandleTypeDef hspi2;
 
-UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
-DMA_HandleTypeDef hdma_usart1_rx;
-DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_usart2_tx;
 
@@ -201,7 +238,6 @@ const osThreadAttr_t myTaskRS485_attributes = {
 };
 /* USER CODE BEGIN PV */
 volatile modbusHandler_t g_modbus_usb_cdc;
-volatile modbusHandler_t g_modbus_usb_serial;
 volatile modbusHandler_t g_modbus_rs485;
 volatile DeviceMemoryModbus g_modbus_mem = { 0 };
 
@@ -213,11 +249,13 @@ volatile uint16_t g_adc_samples[adc_num_samples][adc_num_channels] = { 0 };
 volatile uint16_t g_adc_num_samples = 0;
 volatile uint16_t g_adc_sample_pos = 0;
 volatile uint8_t g_adc_update = 0;
+AT24Cxx_devices_t g_eeprom;
+ConfigMemory g_cfg = { 0 };
 
 //static float g_r1[4] = {10660, 10000, 10380, 9715};
 static const float g_r1[4] = {10660, 10000, 10660, 10000};
 
-static const SensorTypeDesc s_sensor_type_desc[sensor_type__num] = {
+static const SensorTypeDesc s_sensor_type_desc[sensor_type_num_of_types] = {
 	HID_HEATER_SENSOR_TYPE_TBL(HID_HEATER_DECL_SENSOR_TYPE_DESC, )
 };
 
@@ -234,7 +272,6 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI2_Init(void);
-static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_RTC_Init(void);
 void StartDefaultTask(void *argument);
@@ -246,10 +283,17 @@ static float calc_temperature_ntc10k(float r);
 static float calc_temperature_pt1000(float r);
 static bool testU16Bit(volatile uint16_t* mem, uint16_t bit_idx);
 static void setU16Bit(volatile uint16_t* mem, uint16_t bit_idx, bool value);
-static void handle_short_request();
-static void handle_long_request();
+static void handle_short_request(void);
+static void handle_long_request(void);
 static void handle_requests(void);
 static void write_u16_masked(uint16_t reg, uint16_t data, uint16_t mask);
+static uint16_t eeprom_factory_defaults(void);
+static uint16_t eeprom_load_config(void);
+static uint16_t eeprom_save_config(void);
+uint32_t RTC_ToEpoch(RTC_TimeTypeDef *time, RTC_DateTypeDef *date);
+void RTC_FromEpoch(uint32_t epoch, RTC_TimeTypeDef *time, RTC_DateTypeDef *date);
+void RTC_AdjustTimeZone(RTC_TimeTypeDef *time, RTC_DateTypeDef *date, int8_t offset);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -289,10 +333,14 @@ int main(void)
   MX_ADC1_Init();
   MX_I2C1_Init();
   MX_SPI2_Init();
-  MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
+
+  AT24Cxx_init(&g_eeprom, AT24Cxx_SET_ADDR, &hi2c1);
+
+  if( eeprom_load_config() )
+	  eeprom_factory_defaults();
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)g_adc_dma_buffer, adc_num_channels);
 
@@ -318,31 +366,11 @@ int main(void)
   ModbusStartCDC((modbusHandler_t *)&g_modbus_usb_cdc);
 
   /* Modbus Slave initialization */
-  g_modbus_usb_serial.uModbusType = MB_SLAVE;
-  //g_modbus_usb_serial.uModbusType = MB_MASTER;
-  g_modbus_usb_serial.xTypeHW = USART_HW_DMA;
-  //g_modbus_usb_serial.xTypeHW = USB_CDC_HW; // // USB-CDC
-  g_modbus_usb_serial.port = &huart1; // This is the UART port connected to STLINK
-  //g_modbus_usb_serial.port = NULL; // USB-CDC
-  g_modbus_usb_serial.u8id = 1; //slave ID, always different than zero
-  //g_modbus_usb_serial.u8id = 0; //slave ID for master always 0
-  g_modbus_usb_serial.u16timeOut = 1000;
-  g_modbus_usb_serial.EN_Port = NULL; // No RS485
-  //g_modbus_usb_serial.EN_Port = LD2_GPIO_Port; // RS485 Enable
-  //g_modbus_usb_serial.EN_Pin = LD2_Pin; // RS485 Enable
-  g_modbus_usb_serial.u16regs = (uint16_t*) &g_modbus_mem;
-  g_modbus_usb_serial.u16regsize= sizeof(g_modbus_mem)/sizeof(uint16_t);
-   //Initialize Modbus library
-  ModbusInit((modbusHandler_t *)&g_modbus_usb_serial);
-  //Start capturing traffic on serial Port
-  ModbusStart((modbusHandler_t *)&g_modbus_usb_serial);
-
-  /* Modbus Slave initialization */
   g_modbus_rs485.uModbusType = MB_SLAVE;
   //g_modbus_rs485.uModbusType = MB_MASTER;
   g_modbus_rs485.xTypeHW = USART_HW_DMA;
   g_modbus_rs485.port = &huart2; // This is the UART port connected to RS485
-  g_modbus_rs485.u8id = 1; //slave ID, always different than zero
+  g_modbus_rs485.u8id = g_cfg.rs485_id; //slave ID, always different than zero
   //g_modbus_rs485.u8id = 0; //slave ID for master always 0
   g_modbus_rs485.u16timeOut = 1000;
   //g_modbus_rs485.EN_Port = NULL; // No RS485
@@ -642,39 +670,6 @@ static void MX_SPI2_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -727,12 +722,6 @@ static void MX_DMA_Init(void)
   /* DMA2_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
-  /* DMA2_Stream2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
-  /* DMA2_Stream7_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
 
 }
 
@@ -755,10 +744,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, SENSOR_T3_Pin|SENSOR_T4_Pin|LED1_Pin|LED2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, RS485_RSE_Pin|_74HC595PW_STCP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, _74HC595D_STCP_Pin|RS485_RSE_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(_74HC595PW_MR_GPIO_Port, _74HC595PW_MR_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, SENSOR_T3_Pin|SENSOR_T4_Pin|LED1_Pin|LED2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : LED3_Pin */
   GPIO_InitStruct.Pin = LED3_Pin;
@@ -767,19 +759,33 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED3_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SENSOR_T3_Pin SENSOR_T4_Pin LED1_Pin LED2_Pin */
-  GPIO_InitStruct.Pin = SENSOR_T3_Pin|SENSOR_T4_Pin|LED1_Pin|LED2_Pin;
+  /*Configure GPIO pins : RS485_RSE_Pin _74HC595PW_STCP_Pin */
+  GPIO_InitStruct.Pin = RS485_RSE_Pin|_74HC595PW_STCP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : _74HC595PW_MR_Pin */
+  GPIO_InitStruct.Pin = _74HC595PW_MR_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(_74HC595PW_MR_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SENSOR_T3_Pin SENSOR_T4_Pin */
+  GPIO_InitStruct.Pin = SENSOR_T3_Pin|SENSOR_T4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LED1_Pin LED2_Pin */
+  GPIO_InitStruct.Pin = LED1_Pin|LED2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : _74HC595D_STCP_Pin RS485_RSE_Pin */
-  GPIO_InitStruct.Pin = _74HC595D_STCP_Pin|RS485_RSE_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
 
@@ -849,7 +855,7 @@ static void handle_short_request()
 	{
 		// ошибка в кол-ве аргументов запроса
 		*nwords = 0;
-		memset(ret->u8, 0, (hscc_short_io_length - 1) * 2);
+		memset(ret->ur8, 0, (hscc_short_io_length - 1) * 2);
 		return;
 	}
 
@@ -857,37 +863,37 @@ static void handle_short_request()
 	{
 	case ssr_get_short_io_version:
 		*nwords = 1;
-		ret->u16[0] = hscc_short_io_version;
+		ret->ur16[0] = hscc_short_io_version;
 		break;
 
 	case ssr_get_short_io_length:
 		*nwords = 1;
-		ret->u16[0] = hscc_short_io_length;
+		ret->ur16[0] = hscc_short_io_length;
 		break;
 
 	case ssr_get_long_io_version:
 		*nwords = 1;
-		ret->u16[0] = hscc_long_io_version;
+		ret->ur16[0] = hscc_long_io_version;
 		break;
 
 	case ssr_get_long_io_length:
 		*nwords = 1;
-		ret->u16[0] = hscc_long_io_length;
+		ret->ur16[0] = hscc_long_io_length;
 		break;
 
 	case ssr_get_software_type:
 		*nwords = 1;
-		ret->u16[0] = hscc_software_type;
+		ret->ur16[0] = hscc_software_type;
 		break;
 
 	case ssr_get_device_memory_modbus_length:
 		*nwords = 1;
-		ret->u16[0] = DeviceMemoryModbusLength;
+		ret->ur16[0] = DeviceMemoryModbusLength;
 		break;
 
 	case ssr_get_rs485_id:
 		*nwords = 1;
-		ret->u16[0] = g_modbus_rs485.u8id;
+		ret->ur16[0] = g_modbus_rs485.u8id;
 		break;
 
 	case ssr_set_rs485_id:
@@ -896,63 +902,78 @@ static void handle_short_request()
 		uint8_t ecode = !g_modbus_rs485.u8id;
 
 		if( g_modbus_rs485.u8id )
-			g_modbus_rs485.u8id = ret->u16[0];
+			g_modbus_rs485.u8id = ret->ur16[0];
 
-		ret->u16[0] = ecode;
+		ret->ur16[0] = ecode;
 		break;
 	}
 
 	case ssr_get_devid:
 		*nwords = 2;
-		ret->u32[0] = HAL_GetDEVID();
+		ret->ur32[0] = HAL_GetDEVID();
 		break;
 
 	case ssr_get_revid:
 		*nwords = 2;
-		ret->u32[0] = HAL_GetREVID();
+		ret->ur32[0] = HAL_GetREVID();
 		break;
 
 	case ssr_get_uid:
 		*nwords = 6;
-		ret->u32[0] = HAL_GetUIDw0();
-		ret->u32[1] = HAL_GetUIDw1();
-		ret->u32[2] = HAL_GetUIDw2();
+		ret->ur32[0] = HAL_GetUIDw0();
+		ret->ur32[1] = HAL_GetUIDw1();
+		ret->ur32[2] = HAL_GetUIDw2();
+		break;
+
+	case ssr_eeprom_factory_defaults:
+		*nwords = 1;
+		ret->ur16[0] = eeprom_factory_defaults();
+		break;
+
+	case ssr_eeprom_load_config:
+		*nwords = 1;
+		ret->ur16[0] = eeprom_load_config();
+		break;
+
+	case ssr_eeprom_save_config:
+		*nwords = 1;
+		ret->ur16[0] = eeprom_save_config();
 		break;
 
 	case ssr_get_addr_long_io:
 		*nwords = 1;
-		ret->u16[0] = offsetof(DeviceMemoryModbus, long_response) / 2;
+		ret->ur16[0] = offsetof(DeviceMemoryModbus, long_response) / 2;
 		break;
 
 	case ssr_get_addr_dev_ctl:
 		*nwords = 1;
-		ret->u16[0] = offsetof(DeviceMemoryModbus, dev_ctl) / 2;
+		ret->ur16[0] = offsetof(DeviceMemoryModbus, dev_ctl) / 2;
 		break;
 
 	case ssr_get_addr_int_sens_status:
 		*nwords = 1;
-		ret->u16[0] = offsetof(DeviceMemoryModbus, int_sens_status) / 2;
+		ret->ur16[0] = offsetof(DeviceMemoryModbus, int_sens_status) / 2;
 		break;
 
 	case ssr_get_addr_int_sens_value:
 		*nwords = 1;
-		ret->u16[0] = offsetof(DeviceMemoryModbus, int_sens_value) / 2;
+		ret->ur16[0] = offsetof(DeviceMemoryModbus, int_sens_value) / 2;
 		break;
 
 	case ssr_get_max_num_of_internal_sensors:
 		*nwords = 1;
-		ret->u16[0] = max_num_of_internal_sensors;
+		ret->ur16[0] = max_num_of_internal_sensors;
 		break;
 
 	case ssr_get_max_num_of_internal_relays:
 		*nwords = 1;
-		ret->u16[0] = max_num_of_internal_relays;
+		ret->ur16[0] = max_num_of_internal_relays;
 		break;
 
 	case ssr_replace_masked_bits:
 	{
 		*nwords = 0;
-		ReplaceMaskedBitsHeader* h = (ReplaceMaskedBitsHeader*) ret->u16;
+		ReplaceMaskedBitsHeader* h = (ReplaceMaskedBitsHeader*) ret->ur16;
 		ReplaceMaskedBitsData* d;
 
 		while( nargs >= (sizeof(*h) + sizeof(*d))/2 )
@@ -989,7 +1010,7 @@ static void handle_short_request()
 
 	case ssr_rtc0_read_date_time:
 	{
-		RtcDataTime* r = (RtcDataTime*) ret->u8;
+		RtcDataTime* r = (RtcDataTime*) ret->ur8;
 		*nwords = (sizeof(*r) + 1) / 2;
 		RTC_TimeTypeDef t;
 		RTC_DateTypeDef d;
@@ -1009,7 +1030,7 @@ static void handle_short_request()
 	case ssr_rtc0_write_date_time:
 	{
 		*nwords = 0;
-		RtcDataTime* r = (RtcDataTime*) ret->u8;
+		RtcDataTime* r = (RtcDataTime*) ret->ur8;
 		RTC_TimeTypeDef t;
 		RTC_DateTypeDef d;
 		d.Year = r->Year;
@@ -1028,7 +1049,7 @@ static void handle_short_request()
 
 	default:
 		*nwords = 0;
-		memset(ret->u8, 0, (hscc_short_io_length - 1) * 2);
+		memset(ret->ur8, 0, (hscc_short_io_length - 1) * 2);
 		return;
 	}
 
@@ -1056,39 +1077,39 @@ static void handle_long_request()
 	{
 	case slr_get_long_io_version:
 		*nwords = 1;
-		ret->u16[0] = hscc_long_io_version;
+		ret->ur16[0] = hscc_long_io_version;
 		break;
 
 	case slr_get_long_io_length:
 		*nwords = 1;
-		ret->u16[0] = hscc_long_io_length;
+		ret->ur16[0] = hscc_long_io_length;
 		break;
 
 	case slr_call_short_request_list_no_args_ret_1u16:
 		for( int i = 0; i < nargs; ++i )
 		{
-			g_modbus_mem.short_request = ret->u16[i];
+			g_modbus_mem.short_request = ret->ur16[i];
 			g_modbus_mem.short_data[0] = 0;
 			handle_short_request();
-			ret->u16[i] = g_modbus_mem.short_data[1];
+			ret->ur16[i] = g_modbus_mem.short_data[1];
 		}
 		break;
 
 	case slr_call_short_request_list_args_1u16_ret_1u16:
 		for( int i = 0; i < nargs/2; ++i )
 		{
-			g_modbus_mem.short_request = ret->u16[2*i];
+			g_modbus_mem.short_request = ret->ur16[2*i];
 			g_modbus_mem.short_data[0] = 1;
-			g_modbus_mem.short_data[1] = ret->u16[2*i + 1];
+			g_modbus_mem.short_data[1] = ret->ur16[2*i + 1];
 			handle_short_request();
-			ret->u16[2*i] = g_modbus_mem.short_response;
-			ret->u16[2*i + 1] = g_modbus_mem.short_data[1];
+			ret->ur16[2*i] = g_modbus_mem.short_response;
+			ret->ur16[2*i + 1] = g_modbus_mem.short_data[1];
 		}
 		break;
 
 	case slr_get_int_sens_desc:
 	{
-		memcpy(ret->u8, s_internal_sensors_desc, sizeof(s_internal_sensors_desc));
+		memcpy(ret->ur8, s_internal_sensors_desc, sizeof(s_internal_sensors_desc));
 		*nwords = sizeof(s_internal_sensors_desc)/2;
 		break;
 	}
@@ -1096,7 +1117,7 @@ static void handle_long_request()
 	case slr_replace_masked_bits:
 	{
 		*nwords = 0;
-		ReplaceMaskedBitsHeader* h = (ReplaceMaskedBitsHeader*) ret->u16;
+		ReplaceMaskedBitsHeader* h = (ReplaceMaskedBitsHeader*) ret->ur16;
 		ReplaceMaskedBitsData* d;
 
 		while( nargs >= (sizeof(*h) + sizeof(*d))/2 )
@@ -1155,6 +1176,164 @@ static void handle_requests(void)
 		g_modbus_mem.dev_ctl.led_blue = testU16Bit(g_modbus_mem.reserved_relay_out, 2);
 		//g_modbus_mem.dev_ctl.led_orange = testU16Bit(g_modbus_mem.reserved_relay_out, 3);
 	}
+}
+
+static uint16_t eeprom_factory_defaults(void)
+{
+	memset(&g_cfg, 0, sizeof(g_cfg));
+	g_cfg.marker = hscc_config_marker;
+	g_cfg.software_type = hscc_software_type;
+	g_cfg.version = hscc_config_version;
+	g_cfg.length = sizeof(g_cfg) + sizeof(g_modbus_mem);
+	g_cfg.rs485_id = 2;
+	g_cfg.header_crc = calcCRC((uint8_t*) &g_cfg, sizeof(g_cfg) - 4);
+
+	AT24Cxx_write_byte_buffer(g_eeprom.devices[0], (uint8_t*) &g_cfg, hsem_config_marker, sizeof(g_cfg));
+
+	for(uint16_t i = 0; i < sizeof(g_modbus_mem); ++i)
+		AT24Cxx_write_byte(g_eeprom.devices[0], 0, hsem_device_memory + i);
+
+	// перезагружаем устройство
+	HAL_NVIC_SystemReset();
+
+	return hsee_ok;
+}
+
+static uint16_t eeprom_load_config(void)
+{
+	AT24Cxx_read_byte_buffer(g_eeprom.devices[0], (uint8_t*) &g_cfg, hsem_config_marker, sizeof(g_cfg));
+
+	if( g_cfg.marker != hscc_config_marker )
+		return hsee_eeprom_load_config_error_bad_marker;
+
+	if( g_cfg.software_type != hscc_software_type )
+		return hsee_eeprom_load_config_error_bad_software_type;
+
+	if( g_cfg.version/100 != hscc_config_version/100 )
+		return hsee_eeprom_load_config_error_bad_version;
+
+	if( g_cfg.length < sizeof(g_cfg) + sizeof(g_modbus_mem) )
+		return hsee_eeprom_load_config_error_bad_length;
+
+	uint32_t header_crc = calcCRC((uint8_t*) &g_cfg, sizeof(g_cfg) - 4);;
+
+	if( g_cfg.header_crc != header_crc )
+		return hsee_eeprom_load_config_error_bad_header_crc;
+
+	AT24Cxx_read_byte_buffer(g_eeprom.devices[0], (uint8_t*) &g_modbus_mem, hsem_device_memory, sizeof(g_modbus_mem));
+
+	return hsee_ok;
+}
+
+static uint16_t eeprom_save_config(void)
+{
+	memset(&g_cfg, 0, sizeof(g_cfg));
+	g_cfg.marker = hscc_config_marker;
+	g_cfg.software_type = hscc_software_type;
+	g_cfg.version = hscc_config_version;
+	g_cfg.length = sizeof(g_cfg) + sizeof(g_modbus_mem);
+	g_cfg.header_crc = calcCRC((uint8_t*) &g_cfg, sizeof(g_cfg) - 4);
+
+	AT24Cxx_write_byte_buffer(g_eeprom.devices[0], (uint8_t*) &g_cfg, hsem_config_marker, sizeof(g_cfg));
+	AT24Cxx_write_byte_buffer(g_eeprom.devices[0], (uint8_t*) &g_modbus_mem, hsem_device_memory, sizeof(g_modbus_mem));
+
+	return hsee_ok;
+}
+
+// Convert Date/Time structures to epoch time
+uint32_t RTC_ToEpoch(RTC_TimeTypeDef *time, RTC_DateTypeDef *date)
+{
+	uint8_t  a;
+	uint16_t y;
+	uint8_t  m;
+	uint32_t JDN;
+
+	// These hardcore math's are taken from http://en.wikipedia.org/wiki/Julian_day
+
+	// Calculate some coefficients
+	a = (14 - date->Month) / 12;
+	y = (date->Year + 2000) + 4800 - a; // years since 1 March, 4801 BC
+	m = date->Month + (12 * a) - 3; // since 1 March, 4801 BC
+
+	// Gregorian calendar date compute
+    JDN  = date->Date;
+    JDN += (153 * m + 2) / 5;
+    JDN += 365 * y;
+    JDN += y / 4;
+    JDN += -y / 100;
+    JDN += y / 400;
+    JDN  = JDN - 32045;
+    JDN  = JDN - JULIAN_DATE_BASE;    // Calculate from base date
+    JDN *= 86400;                     // Days to seconds
+    JDN += time->Hours * 3600;    // ... and today seconds
+    JDN += time->Minutes * 60;
+    JDN += time->Seconds;
+
+	return JDN;
+}
+
+// Convert epoch time to Date/Time structures
+void RTC_FromEpoch(uint32_t epoch, RTC_TimeTypeDef *time, RTC_DateTypeDef *date)
+{
+	uint32_t tm;
+	uint32_t t1;
+	uint32_t a;
+	uint32_t b;
+	uint32_t c;
+	uint32_t d;
+	uint32_t e;
+	uint32_t m;
+	int16_t  year  = 0;
+	int16_t  month = 0;
+	int16_t  dow   = 0;
+	int16_t  mday  = 0;
+	int16_t  hour  = 0;
+	int16_t  min   = 0;
+	int16_t  sec   = 0;
+	uint64_t JD    = 0;
+	uint64_t JDN   = 0;
+
+	// These hardcore math's are taken from http://en.wikipedia.org/wiki/Julian_day
+
+	JD  = ((epoch + 43200) / (86400 >>1 )) + (2440587 << 1) + 1;
+	JDN = JD >> 1;
+
+    tm = epoch; t1 = tm / 60; sec  = tm - (t1 * 60);
+    tm = t1;    t1 = tm / 60; min  = tm - (t1 * 60);
+    tm = t1;    t1 = tm / 24; hour = tm - (t1 * 24);
+
+    dow   = JDN % 7;
+    a     = JDN + 32044;
+    b     = ((4 * a) + 3) / 146097;
+    c     = a - ((146097 * b) / 4);
+    d     = ((4 * c) + 3) / 1461;
+    e     = c - ((1461 * d) / 4);
+    m     = ((5 * e) + 2) / 153;
+    mday  = e - (((153 * m) + 2) / 5) + 1;
+    month = m + 3 - (12 * (m / 10));
+    year  = (100 * b) + d - 4800 + (m / 10);
+
+    date->Year    = year - 2000;
+    date->Month   = month;
+    date->Date    = mday;
+    date->WeekDay = dow;
+    time->Hours   = hour;
+    time->Minutes = min;
+    time->Seconds = sec;
+}
+
+// Adjust time with time zone offset
+// input:
+//   time - pointer to RTC_Time structure with time to adjust
+//   date - pointer to RTC_Date structure with date to adjust
+//   offset - hours offset to add or subtract from date/time (hours)
+void RTC_AdjustTimeZone(RTC_TimeTypeDef *time, RTC_DateTypeDef *date, int8_t offset)
+{
+	uint32_t epoch;
+
+	epoch  = RTC_ToEpoch(time,date);
+	epoch += offset * 3600;
+	RTC_FromEpoch(epoch,time,date);
 }
 
 /* USER CODE END 4 */
@@ -1258,6 +1437,15 @@ void StartDefaultTask(void *argument)
 		HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, !g_modbus_mem.dev_ctl.led_red);
 		HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, !g_modbus_mem.dev_ctl.led_green);
 		HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, !g_modbus_mem.dev_ctl.led_blue);
+
+		{
+			uint8_t b = ~g_modbus_mem.reserved_relay_out[0];
+			HAL_SPI_Transmit(&hspi2, &b, 1, 1);
+			HAL_GPIO_WritePin(_74HC595PW_STCP_GPIO_Port, _74HC595PW_STCP_Pin, GPIO_PIN_SET);
+			HAL_Delay(1);
+			HAL_GPIO_WritePin(_74HC595PW_STCP_GPIO_Port, _74HC595PW_STCP_Pin, GPIO_PIN_RESET);
+		}
+
 		osDelay(10);
   }
   /* USER CODE END 5 */
