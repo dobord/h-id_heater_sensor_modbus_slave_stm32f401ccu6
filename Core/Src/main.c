@@ -31,6 +31,7 @@
 #include <stdint.h>
 #include "heater_modbus.h"
 #include <AT24Cxx/AT24Cxx_stm32_hal.h>
+#include <max31865/MAX31865.h>
 
 /* USER CODE END Includes */
 
@@ -180,8 +181,13 @@ enum Constants
 
 enum ADC_Constants
 {
-	adc_num_channels = 6,
+	adc_num_channels = 4,
 	adc_num_samples = 64
+};
+
+enum MAX31865_Constants
+{
+	max31865_num_channels = 2,
 };
 
 static const float s_pt1000_r0 = 1000.0f;
@@ -251,6 +257,7 @@ volatile uint16_t g_adc_sample_pos = 0;
 volatile uint8_t g_adc_update = 0;
 AT24Cxx_devices_t g_eeprom;
 ConfigMemory g_cfg = { 0 };
+Max31865_t g_max31865[max31865_num_channels] = { 0 };
 
 //static float g_r1[4] = {10660, 10000, 10380, 9715};
 static const float g_r1[4] = {10660, 10000, 10660, 10000};
@@ -341,6 +348,9 @@ int main(void)
 
   if( eeprom_load_config() )
 	  eeprom_factory_defaults();
+
+  Max31865_init(&g_max31865[0], &hspi2, SENSOR_T3_GPIO_Port, SENSOR_T3_Pin, 2, 0);
+  Max31865_init(&g_max31865[1], &hspi2, SENSOR_T4_GPIO_Port, SENSOR_T4_Pin, 2, 0);
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)g_adc_dma_buffer, adc_num_channels);
 
@@ -1400,20 +1410,11 @@ void StartDefaultTask(void *argument)
 
 			// сопротивления термометров
 			float r[4];
-			for( int i = 0; i < 4 ; ++i )
+			for( int i = 0; i < 2 ; ++i )
 			{
 				float a = (float)(g_adc_values[2+i]) / 65535.0f;
 				r[i] = g_r1[i] * a / ( 1.0f - a );
 			}
-
-			taskYIELD();
-
-			float t[4];
-			for( int i = 0; i < 2; ++i )
-				t[i] = calc_temperature_ntc10k(r[i]);
-
-			for( int i = 0; i < 2; ++i )
-				t[i+2] = calc_temperature_pt1000(r[i+2]);
 
 			taskYIELD();
 
@@ -1423,8 +1424,10 @@ void StartDefaultTask(void *argument)
 			setU16Bit(g_modbus_mem.int_sens_status, isid_tcpu, 1);
 			g_modbus_mem.int_sens_value[isid_tcpu] = lround(t_cpu*10);
 
-		  for( int i = 0; i < 4; ++i )
+			float t[4];
+			for( int i = 0; i < 2; ++i )
 			{
+				t[i] = calc_temperature_ntc10k(r[i]);
 				int idx = isid_t1 + i;
 				bool is_ok = g_adc_values[i+2] != 0xffff;
 				setU16Bit(g_modbus_mem.int_sens_status, idx, is_ok);
@@ -1432,6 +1435,18 @@ void StartDefaultTask(void *argument)
 				if( is_ok )
 					g_modbus_mem.int_sens_value[idx] = lround(t[i]*10);
 			}
+
+			for( int i = 0; i < 2; ++i )
+			{
+				int idx = isid_t3 + i;
+				bool is_ok = Max31865_readTempC(&g_max31865[i], &t[i+2]);
+				setU16Bit(g_modbus_mem.int_sens_status, idx, is_ok);
+
+				if( is_ok )
+					g_modbus_mem.int_sens_value[idx] = lround(t[i+2]*10);
+			}
+
+			taskYIELD();
 		}
 
 		HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, !g_modbus_mem.dev_ctl.led_red);
