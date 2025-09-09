@@ -272,74 +272,76 @@ typedef struct DeviceMemoryModbus {
 
 ### Системные команды Short IO (SystemShortRequestID)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 0 | `ssr_none` | Нет операции | - | - |
-| 1 | `ssr_get_short_io_version` | Версия Short IO протокола | - | [1] версия (1) |
-| 2 | `ssr_get_short_io_length` | Размер буфера Short IO | - | [1] размер (9) |
-| 3 | `ssr_get_long_io_version` | Версия Long IO протокола | - | [1] версия (1) |
-| 4 | `ssr_get_long_io_length` | Размер буфера Long IO | - | [1] размер (66) |
-| 5 | `ssr_get_software_type` | Тип программного обеспечения | - | [1] тип |
-| 6 | `ssr_get_device_memory_modbus_length` | Размер DeviceMemoryModbus | - | [1] размер в словах |
+**Примечание:** ✅ = реализовано, ⚪ = только определено в enum
+
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 0 | `ssr_none` | ✅ | Нет операции | - | - |
+| 1 | `ssr_get_short_io_version` | ✅ | Версия Short IO протокола | - | [1] версия (1) |
+| 2 | `ssr_get_short_io_length` | ✅ | Размер буфера Short IO | - | [1] размер (9) |
+| 3 | `ssr_get_long_io_version` | ✅ | Версия Long IO протокола | - | [1] версия (1) |
+| 4 | `ssr_get_long_io_length` | ✅ | Размер буфера Long IO | - | [1] размер (66) |
+| 5 | `ssr_get_software_type` | ✅ | Тип программного обеспечения | - | [1] тип |
+| 6 | `ssr_get_device_memory_modbus_length` | ✅ | Размер DeviceMemoryModbus | - | [1] размер в словах |
 
 ### RS485 и идентификация (50-86)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 50 | `ssr_get_rs485_id` | Получить RS485 адрес | - | [1] текущий адрес |
-| 51 | `ssr_set_rs485_id` | Установить RS485 адрес | [1] новый адрес | [1] код ошибки |
-| 52 | `ssr_get_devid` | Получить Device ID | - | [2] HAL_GetDEVID() |
-| 53 | `ssr_get_revid` | Получить Revision ID | - | [2] HAL_GetREVID() |
-| 54 | `ssr_get_uid` | Получить Unique ID | - | [6] HAL_GetUIDw0/1/2() |
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 50 | `ssr_get_rs485_id` | ✅ | Получить RS485 адрес | - | [1] текущий адрес |
+| 51 | `ssr_set_rs485_id` | ✅ | Установить RS485 адрес | [1] новый адрес | [1] код ошибки |
+| 52 | `ssr_get_devid` | ✅ | Получить Device ID | - | [2] HAL_GetDEVID() |
+| 53 | `ssr_get_revid` | ✅ | Получить Revision ID | - | [2] HAL_GetREVID() |
+| 54 | `ssr_get_uid` | ✅ | Получить Unique ID | - | [6] HAL_GetUIDw0/1/2() |
 
 ### EEPROM операции (90-92)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 90 | `ssr_eeprom_factory_defaults` | Восстановить заводские настройки | - | [1] код результата |
-| 91 | `ssr_eeprom_load_config` | Загрузить конфигурацию | - | [1] код результата |
-| 92 | `ssr_eeprom_save_config` | Сохранить конфигурацию | - | [1] код результата |
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 90 | `ssr_eeprom_factory_defaults` | ✅ | Восстановить заводские настройки | - | [1] код результата |
+| 91 | `ssr_eeprom_load_config` | ✅ | Загрузить конфигурацию | - | [1] код результата |
+| 92 | `ssr_eeprom_save_config` | ✅ | Сохранить конфигурацию | - | [1] код результата |
 
 ### Адреса в DeviceMemoryModbus (100-141)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 100 | `ssr_get_addr_long_io` | Адрес long_response | - | [1] offset/2 |
-| 101 | `ssr_get_addr_dev_ctl` | Адрес dev_ctl | - | [1] offset/2 |
-| 102 | `ssr_get_addr_common_ctl` | Адрес common_ctl | - | [1] offset/2 |
-| 103 | `ssr_get_addr_heater_ctl` | Адрес heater_ctl | - | [1] offset/2 |
-| 104 | `ssr_get_addr_heater_param` | Адрес heater_param | - | [1] offset/2 |
-| 105 | `ssr_get_addr_heater_counter_q` | Адрес heater_counter_q | - | [1] offset/2 |
-| 110 | `ssr_get_addr_int_sens_status` | Адрес int_sens_status | - | [1] offset/2 |
-| 111 | `ssr_get_addr_int_sens_value` | Адрес int_sens_value | - | [1] offset/2 |
-| 120 | `ssr_get_addr_sens_addr` | Адрес sens_addr | - | [1] offset/2 |
-| 121 | `ssr_get_addr_sens_desc` | Адрес sens_desc | - | [1] offset/2 |
-| 122 | `ssr_get_addr_sens_enable` | Адрес sens_enable | - | [1] offset/2 |
-| 123 | `ssr_get_addr_sens_status` | Адрес sens_status | - | [1] offset/2 |
-| 124 | `ssr_get_addr_sens_value` | Адрес sens_value | - | [1] offset/2 |
-| 130 | `ssr_get_addr_relay_ctl` | Адрес relay_ctl | - | [1] offset/2 |
-| 131 | `ssr_get_addr_relay_status` | Адрес relay_status | - | [1] offset/2 |
-| 132 | `ssr_get_addr_relay_value` | Адрес relay_value | - | [1] offset/2 |
-| 140 | `ssr_get_addr_display_output_control` | Адрес display_output_control | - | [1] offset/2 |
-| 141 | `ssr_get_addr_display_variable` | Адрес display_variable | - | [1] offset/2 |
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 100 | `ssr_get_addr_long_io` | ✅ | Адрес long_response | - | [1] offset/2 |
+| 101 | `ssr_get_addr_dev_ctl` | ✅ | Адрес dev_ctl | - | [1] offset/2 |
+| 102 | `ssr_get_addr_common_ctl` | ⚪ | Адрес common_ctl | - | [1] offset/2 |
+| 103 | `ssr_get_addr_heater_ctl` | ⚪ | Адрес heater_ctl | - | [1] offset/2 |
+| 104 | `ssr_get_addr_heater_param` | ⚪ | Адрес heater_param | - | [1] offset/2 |
+| 105 | `ssr_get_addr_heater_counter_q` | ⚪ | Адрес heater_counter_q | - | [1] offset/2 |
+| 110 | `ssr_get_addr_int_sens_status` | ✅ | Адрес int_sens_status | - | [1] offset/2 |
+| 111 | `ssr_get_addr_int_sens_value` | ✅ | Адрес int_sens_value | - | [1] offset/2 |
+| 120 | `ssr_get_addr_sens_addr` | ⚪ | Адрес sens_addr | - | [1] offset/2 |
+| 121 | `ssr_get_addr_sens_desc` | ⚪ | Адрес sens_desc | - | [1] offset/2 |
+| 122 | `ssr_get_addr_sens_enable` | ⚪ | Адрес sens_enable | - | [1] offset/2 |
+| 123 | `ssr_get_addr_sens_status` | ⚪ | Адрес sens_status | - | [1] offset/2 |
+| 124 | `ssr_get_addr_sens_value` | ⚪ | Адрес sens_value | - | [1] offset/2 |
+| 130 | `ssr_get_addr_relay_ctl` | ⚪ | Адрес relay_ctl | - | [1] offset/2 |
+| 131 | `ssr_get_addr_relay_status` | ⚪ | Адрес relay_status | - | [1] offset/2 |
+| 132 | `ssr_get_addr_relay_value` | ⚪ | Адрес relay_value | - | [1] offset/2 |
+| 140 | `ssr_get_addr_display_output_control` | ⚪ | Адрес display_output_control | - | [1] offset/2 |
+| 141 | `ssr_get_addr_display_variable` | ⚪ | Адрес display_variable | - | [1] offset/2 |
 
 ### Максимальные значения (200-206)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 200 | `ssr_get_max_num_of_internal_sensors` | Макс. кол-во внутренних датчиков | - | [1] значение (7) |
-| 201 | `ssr_get_max_num_of_internal_relays` | Макс. кол-во внутренних реле | - | [1] значение (8) |
-| 202 | `ssr_get_max_num_of_sensors` | Макс. кол-во датчиков | - | [1] значение |
-| 203 | `ssr_get_max_num_of_relays` | Макс. кол-во реле | - | [1] значение |
-| 204 | `ssr_get_max_num_of_heater_ctl` | Макс. кол-во heater_ctl | - | [1] значение |
-| 205 | `ssr_get_max_num_of_common_ctl` | Макс. кол-во common_ctl | - | [1] значение |
-| 206 | `ssr_get_max_num_of_display_variable` | Макс. кол-во display_variable | - | [1] значение |
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 200 | `ssr_get_max_num_of_internal_sensors` | ✅ | Макс. кол-во внутренних датчиков | - | [1] значение (7) |
+| 201 | `ssr_get_max_num_of_internal_relays` | ✅ | Макс. кол-во внутренних реле | - | [1] значение (8) |
+| 202 | `ssr_get_max_num_of_sensors` | ⚪ | Макс. кол-во датчиков | - | [1] значение |
+| 203 | `ssr_get_max_num_of_relays` | ⚪ | Макс. кол-во реле | - | [1] значение |
+| 204 | `ssr_get_max_num_of_heater_ctl` | ⚪ | Макс. кол-во heater_ctl | - | [1] значение |
+| 205 | `ssr_get_max_num_of_common_ctl` | ⚪ | Макс. кол-во common_ctl | - | [1] значение |
+| 206 | `ssr_get_max_num_of_display_variable` | ⚪ | Макс. кол-во display_variable | - | [1] значение |
 
 ### Битовые операции (300)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 300 | `ssr_replace_masked_bits` | Маскированная запись битов | ReplaceMaskedBitsHeader + ReplaceMaskedBitsData[] | - |
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 300 | `ssr_replace_masked_bits` | ✅ | Маскированная запись битов | ReplaceMaskedBitsHeader + ReplaceMaskedBitsData[] | - |
 
 **Структура ReplaceMaskedBitsHeader:**
 ```c
@@ -359,17 +361,17 @@ typedef struct {
 
 ### RTC операции (400-434)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 400 | `ssr_rtc0_read_date_time` | Чтение даты/времени RTC0 | - | [4] RtcDataTime |
-| 401 | `ssr_rtc0_write_date_time` | Запись даты/времени RTC0 | [4] RtcDataTime | - |
-| 420 | `ssr_rtc1_read_date_time` | Чтение даты/времени RTC1 | - | [4] RtcDataTime |
-| 421 | `ssr_rtc1_write_date_time` | Запись даты/времени RTC1 | [4] RtcDataTime | - |
-| 422 | `ssr_rtc1_read_calibr` | Чтение калибровки RTC1 | - | [1] значение |
-| 423 | `ssr_rtc1_write_calibr` | Запись калибровки RTC1 | [1] значение | - |
-| 424 | `ssr_rtc1_read_regs` | Чтение регистров RTC1 | - | [N] регистры |
-| 425 | `ssr_rtc1_write_regs` | Запись регистров RTC1 | [N] регистры | - |
-| 426 | `ssr_rtc1_copy_to_rtc0` | Копирование RTC1 → RTC0 | - | - |
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 400 | `ssr_rtc0_read_date_time` | ✅ | Чтение даты/времени RTC0 | - | [4] RtcDataTime |
+| 401 | `ssr_rtc0_write_date_time` | ✅ | Запись даты/времени RTC0 | [4] RtcDataTime | - |
+| 420 | `ssr_rtc1_read_date_time` | ⚪ | Чтение даты/времени RTC1 | - | [4] RtcDataTime |
+| 421 | `ssr_rtc1_write_date_time` | ⚪ | Запись даты/времени RTC1 | [4] RtcDataTime | - |
+| 422 | `ssr_rtc1_read_calibr` | ⚪ | Чтение калибровки RTC1 | - | [1] значение |
+| 423 | `ssr_rtc1_write_calibr` | ⚪ | Запись калибровки RTC1 | [1] значение | - |
+| 424 | `ssr_rtc1_read_regs` | ⚪ | Чтение регистров RTC1 | - | [N] регистры |
+| 425 | `ssr_rtc1_write_regs` | ⚪ | Запись регистров RTC1 | [N] регистры | - |
+| 426 | `ssr_rtc1_copy_to_rtc0` | ⚪ | Копирование RTC1 → RTC0 | - | - |
 
 **Структура RtcDataTime:**
 ```c
@@ -387,9 +389,9 @@ typedef struct {
 
 ### Дисплей (500)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 500 | `ssr_tft_fullscreen_repaint` | Полная перерисовка экрана | - | - |
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 500 | `ssr_tft_fullscreen_repaint` | ⚪ | Полная перерисовка экрана | - | - |
 
 ## Справочник команд Long IO (Длинные команды)
 
@@ -406,18 +408,20 @@ typedef struct {
 
 ### Системные команды Long IO (SystemLongRequestID)
 
-| ID | Команда | Описание | Аргументы | Возврат |
-|----|---------|----------|-----------|---------|
-| 0 | `slr_none` | Нет операции | - | - |
-| 1 | `slr_get_long_io_version` | Версия Long IO протокола | - | [1] версия (1) |
-| 2 | `slr_get_long_io_length` | Размер буфера Long IO | - | [1] размер (66) |
-| 3 | `slr_call_short_request_list_no_args_ret_1u16` | Batch вызов коротких команд без аргументов | [N] список ssr_* ID | [N] результаты |
-| 4 | `slr_call_short_request_list_args_1u16_ret_1u16` | Batch вызов коротких команд с 1 аргументом | [2N] пары (ssr_ID, arg) | [2N] пары (response, result) |
-| 5 | `slr_rs485_request` | RS485 запрос | [N] данные запроса | [M] данные ответа |
-| 6 | `slr_get_int_sens_desc` | Описания внутренних датчиков | - | [N] SensorDescription[] |
-| 7 | `slr_replace_masked_bits` | Маскированная запись битов (Long версия) | ReplaceMaskedBitsHeader + ReplaceMaskedBitsData[] | - |
-| 8 | `slr_log_flash_status` | Статус Flash лога | - | [N] статус |
-| 9 | `slr_log_flash_read` | Чтение Flash лога | [N] параметры | [M] данные лога |
+**Примечание:** ✅ = реализовано, ⚪ = только определено в enum
+
+| ID | Команда | Статус | Описание | Аргументы | Возврат |
+|----|---------|--------|----------|-----------|---------|
+| 0 | `slr_none` | ✅ | Нет операции | - | - |
+| 1 | `slr_get_long_io_version` | ✅ | Версия Long IO протокола | - | [1] версия (1) |
+| 2 | `slr_get_long_io_length` | ✅ | Размер буфера Long IO | - | [1] размер (66) |
+| 3 | `slr_call_short_request_list_no_args_ret_1u16` | ✅ | Batch вызов коротких команд без аргументов | [N] список ssr_* ID | [N] результаты |
+| 4 | `slr_call_short_request_list_args_1u16_ret_1u16` | ✅ | Batch вызов коротких команд с 1 аргументом | [2N] пары (ssr_ID, arg) | [2N] пары (response, result) |
+| 5 | `slr_rs485_request` | ⚪ | RS485 запрос | [N] данные запроса | [M] данные ответа |
+| 6 | `slr_get_int_sens_desc` | ✅ | Описания внутренних датчиков | - | [N] SensorDescription[] |
+| 7 | `slr_replace_masked_bits` | ✅ | Маскированная запись битов (Long версия) | ReplaceMaskedBitsHeader + ReplaceMaskedBitsData[] | - |
+| 8 | `slr_log_flash_status` | ⚪ | Статус Flash лога | - | [N] статус |
+| 9 | `slr_log_flash_read` | ⚪ | Чтение Flash лога | [N] параметры | [M] данные лога |
 
 **Структура SensorDescription:**
 ```c
