@@ -1,0 +1,15 @@
+# What’s included:
+- Added ARCHITECTURE.md, PRD.md, SYSTEM_REQUIREMENTS.md, MODBUS-API.md.
+- Added compatibility notes with Heater Control Modbus Master (dobord/h-id_heater_control_modbus_master_stm32f401ccu6).
+- Documented masked updates via FC=16 and Short/Long IO flows.
+- Detailed DeviceMemoryModbus layout (offsets, short/long exchange, sensor status/values, dev_ctl).
+- Clarified USB-CDC usage for logging and service via [h-id_heater_gui](https://github.com/dobord/h-id_heater_gui).
+
+# Key points:
+- CTRL_FLAGS mirrors coil flags and supports atomic masked updates.
+- SHORT_IO_BASE is published in Holding; short_response has a fixed offset = 16.
+- Operations are idempotent to tolerate master retries.
+
+# Next steps (optional):
+- Sync concrete OPCODE values for short/long operations with the master implementation.
+- Pin exact DeviceControlRegister_SensorTemperature field layout in dev_ctl.
