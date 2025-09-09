@@ -344,7 +344,7 @@ int main(void)
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
-  AT24Cxx_init(&g_eeprom, AT24Cxx_SET_ADDR, &hi2c1);
+  AT24Cxx_init(&g_eeprom, 0, &hi2c1); // AT24Cxx_SET_ADDR
 
   if( eeprom_load_config() )
 	  eeprom_factory_defaults();
