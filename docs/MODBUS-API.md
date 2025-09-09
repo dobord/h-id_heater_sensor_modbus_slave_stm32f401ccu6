@@ -195,6 +195,13 @@ typedef struct DeviceMemoryModbus {
 - `hscc_long_io_length = 66` — размер буфера длинных команд (2 + MAX_BUFFER/2, MAX_BUFFER=128)
 - `max_num_of_internal_sensors = 7` — количество внутренних датчиков (vref, vbat, tcpu, t1, t2, t3, t4)
 - `length_of_ctl_reg_internal_sensors = 1` — размер статусного регистра датчиков ((7+15)/16)
+- `hscc_short_io_version = 1` — версия протокола коротких команд
+- `hscc_long_io_version = 1` — версия протокола длинных команд
+
+**Статистика реализации:**
+- Short IO команд: 23 из 50 определенных (46%)
+- Long IO команд: 6 из 10 определенных (60%)
+- Общий размер DeviceMemoryModbus: 104 слова (208 байт)
 
 **Внутренние датчики:**
 - `isid_vref` (0): Опорное напряжение [voltage]
@@ -255,7 +262,7 @@ typedef struct DeviceMemoryModbus {
   - `max_num_of_internal_sensors = 7` — количество внутренних датчиков
   - `length_of_ctl_reg_internal_sensors = 1` — размер статусного регистра датчиков
 - При проектировании карт регистров следует избегать перекрытия с основной конфигурационной областью Holding (40001..), если DMEM_BASE располагается в общем пространстве Holding.
-- Общий размер DeviceMemoryModbus: 104 слова (208 байт).
+- Общий размер DeviceMemoryModbus: 104 слова (208 байт) — размер рассчитывается как 16 + 1 + 1 + 9 + 1 + 7 + 1 + 1 + 1 + 66 = 104.
 
 ## Справочник команд Short IO (Короткие команды)
 
